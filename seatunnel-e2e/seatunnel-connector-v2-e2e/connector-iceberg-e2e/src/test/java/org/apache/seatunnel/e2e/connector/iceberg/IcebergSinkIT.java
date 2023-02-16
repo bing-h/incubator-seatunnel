@@ -67,7 +67,7 @@ public class IcebergSinkIT {
 
     private static final String CATALOG_NAME = "seatunnel";
     private static final IcebergCatalogType CATALOG_TYPE = GLUE;
-    private static final String CATALOG_DIR = "bytepower-log/seatunnel-test/";
+    private static final String CATALOG_DIR = "bucket/seatunnel-test/";
     private static final String WAREHOUSE = "s3://" + CATALOG_DIR;
     private static Catalog CATALOG;
 

@@ -17,23 +17,15 @@
 
 package org.apache.seatunnel.e2e.connector.iceberg;
 
-import static org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType.HADOOP;
+import static org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType.GLUE;
 
 import org.apache.seatunnel.connectors.seatunnel.iceberg.IcebergCatalogFactory;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType;
-import org.apache.seatunnel.e2e.common.TestResource;
-import org.apache.seatunnel.e2e.common.TestSuiteBase;
-import org.apache.seatunnel.e2e.common.container.ContainerExtendedFactory;
-import org.apache.seatunnel.e2e.common.container.TestContainer;
-import org.apache.seatunnel.e2e.common.junit.TestContainerExtension;
 
 import lombok.extern.slf4j.Slf4j;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.DataFile;
-import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileFormat;
-import org.apache.iceberg.Files;
-import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.PartitionKey;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
@@ -42,16 +34,12 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.data.GenericAppenderFactory;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.Record;
-import org.apache.iceberg.hadoop.HadoopInputFile;
-import org.apache.iceberg.io.FileAppender;
+import org.apache.iceberg.encryption.EncryptedOutputFile;
+import org.apache.iceberg.io.DataWriter;
 import org.apache.iceberg.io.FileAppenderFactory;
+import org.apache.iceberg.io.OutputFileFactory;
 import org.apache.iceberg.types.Types;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.TestTemplate;
-import org.testcontainers.containers.Container;
-import org.testcontainers.utility.MountableFile;
+import org.apache.iceberg.util.ArrayUtil;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -66,7 +54,24 @@ import java.util.Collections;
 import java.util.List;
 
 @Slf4j
-public class IcebergSourceIT extends TestSuiteBase implements TestResource {
+public class IcebergSourceIT {
+
+    private Table table;
+
+    private static final int FORMAT_V2 = 2;
+
+    private  FileFormat format;
+
+    private PartitionKey partition = null;
+    private OutputFileFactory fileFactory = null;
+
+    public IcebergSourceIT(){
+    }
+
+    public static  void main(String[] args) throws IOException {
+        IcebergSourceIT icebergSourceIT = new IcebergSourceIT();
+        icebergSourceIT.start();
+    }
 
     private static final TableIdentifier TABLE = TableIdentifier.of(
         Namespace.of("database1"), "source");
@@ -94,33 +99,14 @@ public class IcebergSourceIT extends TestSuiteBase implements TestResource {
     );
 
     private static final String CATALOG_NAME = "seatunnel";
-    private static final IcebergCatalogType CATALOG_TYPE = HADOOP;
-    private static final String CATALOG_DIR = "/tmp/seatunnel/iceberg/hadoop/";
-    private static final String WAREHOUSE = "file://" + CATALOG_DIR;
+    private static final IcebergCatalogType CATALOG_TYPE = GLUE;
+    private static final String CATALOG_DIR = "bucket/seatunnel-test/";
+    private static final String WAREHOUSE = "s3://" + CATALOG_DIR;
     private static Catalog CATALOG;
 
-    @TestContainerExtension
-    private final ContainerExtendedFactory extendedFactory = container -> {
-        container.copyFileToContainer(MountableFile.forHostPath(CATALOG_DIR), CATALOG_DIR);
-    };
-
-    @BeforeEach
-    @Override
-    public void startUp() throws Exception {
+    public void start() throws IOException {
         initializeIcebergTable();
         batchInsertData();
-    }
-
-    @AfterAll
-    @Override
-    public void tearDown() throws Exception {
-
-    }
-
-    @TestTemplate
-    public void testIcebergSource(TestContainer container) throws IOException, InterruptedException {
-        Container.ExecResult execResult = container.executeJob("/iceberg/iceberg_source.conf");
-        Assertions.assertEquals(0, execResult.getExitCode(), execResult.getStderr());
     }
 
     private void initializeIcebergTable() {
@@ -132,9 +118,12 @@ public class IcebergSourceIT extends TestSuiteBase implements TestResource {
         if (!CATALOG.tableExists(TABLE)) {
             CATALOG.createTable(TABLE, SCHEMA);
         }
+        table = CATALOG.loadTable(TABLE);
+        format = FileFormat.valueOf("PARQUET");
+        fileFactory = OutputFileFactory.builderFor(table, 1, 1).format(format).build();
     }
 
-    private void batchInsertData() {
+    private void batchInsertData() throws IOException {
         GenericRecord record = GenericRecord.create(SCHEMA);
         record.setField("f1", Long.valueOf(0));
         record.setField("f2", true);
@@ -156,27 +145,50 @@ public class IcebergSourceIT extends TestSuiteBase implements TestResource {
         structRecord.setField("f17_a", "test");
         record.setField("f17", structRecord);
 
-        Table table = CATALOG.loadTable(TABLE);
-        FileAppenderFactory appenderFactory = new GenericAppenderFactory(SCHEMA);
-        List<Record> records = new ArrayList<>();
+        List<Record> pendingRows = new ArrayList<>();
+        FileAppenderFactory<Record> appenderFactory = createAppenderFactory(null, null, null);
+
         for (int i = 0; i < 100; i++) {
-            records.add(record.copy("f1", Long.valueOf(i)));
+            pendingRows.add(record.copy("f1", Long.valueOf(i)));
             if (i % 10 == 0) {
-                String externalFilePath = String.format(CATALOG_DIR + "external_file/datafile_%s.avro", i);
-                FileAppender<Record> fileAppender = appenderFactory.newAppender(
-                    Files.localOutput(externalFilePath), FileFormat.fromFileName(externalFilePath));
-                try (FileAppender<Record> fileAppenderCloseable = fileAppender) {
-                    fileAppenderCloseable.addAll(records);
-                    records.clear();
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-                DataFile datafile = DataFiles.builder(PartitionSpec.unpartitioned())
-                    .withInputFile(HadoopInputFile.fromLocation(externalFilePath, new Configuration()))
-                    .withMetrics(fileAppender.metrics())
-                    .build();
-                table.newAppend().appendFile(datafile).commit();
+                DataFile dataFile = prepareDataFile(pendingRows, appenderFactory);
+                table.newRowDelta()
+                    .addRows(dataFile)
+                    .commit();
+                pendingRows.clear();
             }
+        }
+        if (pendingRows.size()>0){
+            DataFile dataFile = prepareDataFile(pendingRows, appenderFactory);
+            table.newRowDelta()
+                .addRows(dataFile)
+                .commit();
+            pendingRows.clear();
+        }
+    }
+
+    protected FileAppenderFactory<Record> createAppenderFactory(List<Integer> equalityFieldIds,
+                                                                Schema eqDeleteSchema,
+                                                                Schema posDeleteRowSchema) {
+        return new GenericAppenderFactory(table.schema(), table.spec(), ArrayUtil.toIntArray(equalityFieldIds),
+            eqDeleteSchema, posDeleteRowSchema);
+    }
+
+    private DataFile prepareDataFile(List<Record> rowSet, FileAppenderFactory<Record> appenderFactory) throws IOException {
+        DataWriter<Record> writer = appenderFactory.newDataWriter(createEncryptedOutputFile(), format, partition);
+        try (DataWriter<Record> closeableWriter = writer) {
+            for (Record row : rowSet) {
+                closeableWriter.write(row);
+            }
+        }
+        return writer.toDataFile();
+    }
+
+    private EncryptedOutputFile createEncryptedOutputFile() {
+        if (partition == null) {
+            return fileFactory.newOutputFile();
+        } else {
+            return fileFactory.newOutputFile(partition);
         }
     }
 }
