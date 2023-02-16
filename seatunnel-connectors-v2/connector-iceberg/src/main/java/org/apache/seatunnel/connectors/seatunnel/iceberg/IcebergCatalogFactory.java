@@ -25,6 +25,7 @@ import lombok.NonNull;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.CatalogUtil;
+import org.apache.iceberg.aws.glue.GlueCatalog;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.hadoop.HadoopCatalog;
 import org.apache.iceberg.hadoop.SerializableConfiguration;
@@ -65,6 +66,10 @@ public class IcebergCatalogFactory implements Serializable {
             case HIVE:
                 properties.put(CatalogProperties.URI, uri);
                 return hive(catalogName, serializableConf, properties);
+            case GLUE:
+                properties.put(
+                        CatalogProperties.FILE_IO_IMPL, "org.apache.iceberg.aws.s3.S3FileIO");
+                return glue(catalogName, serializableConf, properties);
             default:
                 throw new IcebergConnectorException(CommonErrorCode.UNSUPPORTED_OPERATION,
                     String.format("Unsupported catalogType: %s", catalogType));
@@ -81,5 +86,11 @@ public class IcebergCatalogFactory implements Serializable {
                                 SerializableConfiguration conf,
                                 Map<String, String> properties) {
         return CatalogUtil.loadCatalog(HiveCatalog.class.getName(), catalogName, properties, conf.get());
+    }
+
+    private static Catalog glue(
+            String catalogName, SerializableConfiguration conf, Map<String, String> properties) {
+        return CatalogUtil.loadCatalog(
+                GlueCatalog.class.getName(), catalogName, properties, conf.get());
     }
 }

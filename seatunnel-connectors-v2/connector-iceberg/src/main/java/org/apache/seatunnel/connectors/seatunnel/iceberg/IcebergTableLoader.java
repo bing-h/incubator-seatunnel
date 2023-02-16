@@ -19,7 +19,7 @@ package org.apache.seatunnel.connectors.seatunnel.iceberg;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
-import org.apache.seatunnel.connectors.seatunnel.iceberg.config.SourceConfig;
+import org.apache.seatunnel.connectors.seatunnel.iceberg.config.CommonConfig;
 
 import lombok.NonNull;
 import org.apache.iceberg.CachingCatalog;
@@ -65,13 +65,16 @@ public class IcebergTableLoader implements Closeable, Serializable {
         }
     }
 
-    public static IcebergTableLoader create(SourceConfig sourceConfig) {
-        IcebergCatalogFactory catalogFactory = new IcebergCatalogFactory(
-            sourceConfig.getCatalogName(),
-            sourceConfig.getCatalogType(),
-            sourceConfig.getWarehouse(),
-            sourceConfig.getUri());
-        return new IcebergTableLoader(catalogFactory,
-            TableIdentifier.of(Namespace.of(sourceConfig.getNamespace()), sourceConfig.getTable()));
+    public static IcebergTableLoader create(CommonConfig sourceConfig) {
+        IcebergCatalogFactory catalogFactory =
+                new IcebergCatalogFactory(
+                        sourceConfig.getCatalogName(),
+                        sourceConfig.getCatalogType(),
+                        sourceConfig.getWarehouse(),
+                        sourceConfig.getUri());
+        return new IcebergTableLoader(
+                catalogFactory,
+                TableIdentifier.of(
+                        Namespace.of(sourceConfig.getNamespace()), sourceConfig.getTable()));
     }
 }

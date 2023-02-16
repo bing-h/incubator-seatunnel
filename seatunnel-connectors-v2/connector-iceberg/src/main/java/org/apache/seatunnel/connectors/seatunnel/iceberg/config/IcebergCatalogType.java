@@ -20,7 +20,9 @@ package org.apache.seatunnel.connectors.seatunnel.iceberg.config;
 public enum IcebergCatalogType {
 
     HADOOP("hadoop"),
-    HIVE("hive");
+    HIVE("hive"),
+
+    GLUE("glue");
 
     final String type;
 

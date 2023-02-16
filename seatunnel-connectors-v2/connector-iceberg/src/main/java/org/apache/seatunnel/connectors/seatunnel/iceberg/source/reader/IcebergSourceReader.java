@@ -24,8 +24,8 @@ import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 import org.apache.seatunnel.api.table.type.SeaTunnelRowType;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.IcebergTableLoader;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.config.SourceConfig;
-import org.apache.seatunnel.connectors.seatunnel.iceberg.data.DefaultDeserializer;
-import org.apache.seatunnel.connectors.seatunnel.iceberg.data.Deserializer;
+import org.apache.seatunnel.connectors.seatunnel.iceberg.data.DataConverter;
+import org.apache.seatunnel.connectors.seatunnel.iceberg.data.DefaultDataConverter;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.source.split.IcebergFileScanTaskSplit;
 
 import lombok.NonNull;
@@ -46,7 +46,7 @@ public class IcebergSourceReader implements SourceReader<SeaTunnelRow, IcebergFi
 
     private final SourceReader.Context context;
     private final Queue<IcebergFileScanTaskSplit> pendingSplits;
-    private final Deserializer deserializer;
+    private final DataConverter dataConverter;
     private final Schema tableSchema;
     private final Schema projectedSchema;
     private final SourceConfig sourceConfig;
@@ -64,7 +64,7 @@ public class IcebergSourceReader implements SourceReader<SeaTunnelRow, IcebergFi
                                @NonNull SourceConfig sourceConfig) {
         this.context = context;
         this.pendingSplits = new LinkedList<>();
-        this.deserializer = new DefaultDeserializer(seaTunnelRowType, projectedSchema);
+        this.dataConverter = new DefaultDataConverter(seaTunnelRowType, projectedSchema);
         this.tableSchema = tableSchema;
         this.projectedSchema = projectedSchema;
         this.sourceConfig = sourceConfig;
@@ -75,14 +75,16 @@ public class IcebergSourceReader implements SourceReader<SeaTunnelRow, IcebergFi
         icebergTableLoader = IcebergTableLoader.create(sourceConfig);
         icebergTableLoader.open();
 
-        icebergFileScanTaskSplitReader = new IcebergFileScanTaskSplitReader(deserializer,
-            IcebergFileScanTaskReader.builder()
-                .fileIO(icebergTableLoader.loadTable().io())
-                .tableSchema(tableSchema)
-                .projectedSchema(projectedSchema)
-                .caseSensitive(sourceConfig.isCaseSensitive())
-                .reuseContainers(true)
-                .build());
+        icebergFileScanTaskSplitReader =
+                new IcebergFileScanTaskSplitReader(
+                        dataConverter,
+                        IcebergFileScanTaskReader.builder()
+                                .fileIO(icebergTableLoader.loadTable().io())
+                                .tableSchema(tableSchema)
+                                .projectedSchema(projectedSchema)
+                                .caseSensitive(sourceConfig.isCaseSensitive())
+                                .reuseContainers(true)
+                                .build());
     }
 
     @Override

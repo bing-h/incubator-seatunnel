@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.connectors.seatunnel.iceberg;
 
+import org.apache.seatunnel.connectors.seatunnel.iceberg.sink.IcebergSinkFactory;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.source.IcebergSourceFactory;
 
 import org.junit.jupiter.api.Assertions;
@@ -27,5 +28,6 @@ class IcebergFactoryTest {
     @Test
     void optionRule() {
         Assertions.assertNotNull((new IcebergSourceFactory()).optionRule());
+        Assertions.assertNotNull(new IcebergSinkFactory().optionRule());
     }
 }

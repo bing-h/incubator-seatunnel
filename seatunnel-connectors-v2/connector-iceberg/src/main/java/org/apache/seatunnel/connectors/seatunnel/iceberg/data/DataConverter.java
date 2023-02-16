@@ -21,7 +21,9 @@ import org.apache.seatunnel.api.table.type.SeaTunnelRow;
 
 import org.apache.iceberg.data.Record;
 
-public interface Deserializer {
+public interface DataConverter {
 
-    SeaTunnelRow deserialize(Record record);
+    SeaTunnelRow toSeaTunnelRowStruct(Record record);
+
+    Record toIcebergStruct(SeaTunnelRow row);
 }

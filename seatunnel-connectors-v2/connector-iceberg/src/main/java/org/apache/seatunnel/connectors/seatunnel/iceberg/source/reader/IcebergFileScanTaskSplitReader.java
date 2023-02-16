@@ -18,7 +18,7 @@
 package org.apache.seatunnel.connectors.seatunnel.iceberg.source.reader;
 
 import org.apache.seatunnel.api.table.type.SeaTunnelRow;
-import org.apache.seatunnel.connectors.seatunnel.iceberg.data.Deserializer;
+import org.apache.seatunnel.connectors.seatunnel.iceberg.data.DataConverter;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.exception.IcebergConnectorErrorCode;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.exception.IcebergConnectorException;
 import org.apache.seatunnel.connectors.seatunnel.iceberg.source.split.IcebergFileScanTaskSplit;
@@ -34,7 +34,7 @@ import java.io.IOException;
 @AllArgsConstructor
 public class IcebergFileScanTaskSplitReader implements Closeable {
 
-    private Deserializer deserializer;
+    private DataConverter deserializer;
     private IcebergFileScanTaskReader icebergFileScanTaskReader;
 
     public CloseableIterator<SeaTunnelRow> open(@NonNull IcebergFileScanTaskSplit split) {
@@ -43,11 +43,13 @@ public class IcebergFileScanTaskSplitReader implements Closeable {
         OffsetSeekIterator<Record> seekIterator = new OffsetSeekIterator<>(iterator);
         seekIterator.seek(split.getRecordOffset());
 
-        return CloseableIterator.transform(seekIterator, record -> {
-            SeaTunnelRow seaTunnelRow = deserializer.deserialize(record);
-            split.setRecordOffset(split.getRecordOffset() + 1);
-            return seaTunnelRow;
-        });
+        return CloseableIterator.transform(
+            seekIterator,
+            record -> {
+                SeaTunnelRow seaTunnelRow = deserializer.toSeaTunnelRowStruct(record);
+                split.setRecordOffset(split.getRecordOffset() + 1);
+                return seaTunnelRow;
+            });
     }
 
     @Override

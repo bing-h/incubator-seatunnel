@@ -17,6 +17,7 @@
 
 package org.apache.seatunnel.connectors.seatunnel.iceberg.config;
 
+import static org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType.GLUE;
 import static org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType.HADOOP;
 import static org.apache.seatunnel.connectors.seatunnel.iceberg.config.IcebergCatalogType.HIVE;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -88,9 +89,11 @@ public class CommonConfig implements Serializable {
 
     public CommonConfig(Config pluginConfig) {
         String catalogType = checkArgumentNotNull(pluginConfig.getString(KEY_CATALOG_TYPE.key()));
-        checkArgument(HADOOP.getType().equals(catalogType)
-                || HIVE.getType().equals(catalogType),
-            "Illegal catalogType: " + catalogType);
+        checkArgument(
+                HADOOP.getType().equals(catalogType)
+                        || HIVE.getType().equals(catalogType)
+                        || GLUE.getType().equals(catalogType),
+                "Illegal catalogType: " + catalogType);
 
         this.catalogType = IcebergCatalogType.valueOf(catalogType.toUpperCase());
         this.catalogName = checkArgumentNotNull(pluginConfig.getString(KEY_CATALOG_NAME.key()));
